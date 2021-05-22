@@ -8,6 +8,7 @@ RUN sh cmake-install --skip-license --prefix=/usr --exclude-subdirectory
 RUN git clone https://github.com/awslabs/aws-lambda-cpp.git
 WORKDIR /tmp/aws-lambda-cpp/build
 RUN cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=/opt/local
+RUN make install
 
 RUN mkdir opencv
 WORKDIR /tmp/opencv

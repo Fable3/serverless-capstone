@@ -111,7 +111,7 @@ cmake --build .
 make install
 ```
 
-The installation process takes about an hour, so this is a candidate for a development Docker image.
+The installation process takes about an hour, so this is a candidate for a new development Docker image.
 
 The generated libraries are quite big, and there's a limit of 50 Mb of zip file for a lambda function, so a project should only include the used `.so` files in the final zip.
 
@@ -132,5 +132,23 @@ Border collie: 0.7920
 bash-4.2# ./classification googlenet -i=dog3.jpg -m=bvlc_googlenet.caffemodel -c=bvlc_googlenet.prototxt -classes=classification_classes_ILSVRC2012.txt
 Inference time: 30.71 ms
 dalmatian, coach dog, carriage dog: 1.0000
+```
+
+Full process of a working OpenCV build:
+
+- in opencv-dnn, either build the Docker image (takes about 1 hour), or pull it from DockerHub
+- Run the image in interactive mode: docker run -it aws_cpp_opencv
+- copy the files to the running environment: docker cp . 346c507ab859:/tmp
+
+Then from the bash in Docker:
+
+```
+bash-4.2# make
+bash-4.2# export LD_LIBRARY_PATH=/usr/local/lib64
+bash-4.2# wget http://dl.caffe.berkeleyvision.org/bvlc_googlenet.caffemodel
+bash-4.2# wget https://en.wikipedia.org/wiki/Elephant#/media/File:Elephants_at_Amboseli_national_park_against_Mount_Kilimanjaro.jpg
+bash-4.2# ./classification googlenet -classes=classification_classes_ILSVRC2012.txt -i=Elephants_at_Amboseli_national_park_against_Mount_Kilimanjaro.jpg
+Inference time: 30.78 ms
+African elephant, Loxodonta africana: 0.8207
 ```
 
