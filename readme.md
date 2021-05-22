@@ -152,3 +152,37 @@ Inference time: 30.78 ms
 African elephant, Loxodonta africana: 0.8207
 ```
 
+## AWS C++ SDK
+
+To download from S3 bucket, AWS SDK is needed.
+
+Instructions: https://github.com/aws/aws-sdk-cpp/wiki/Building-the-SDK-from-source-on-EC2
+
+Hello S3: https://docs.aws.amazon.com/sdk-for-cpp/v1/developer-guide/build-cmake.html
+
+Some of the instructions were quite misleading, like missing the recurse flag from git command, here's a working version (for s3 only), running from a docker image with increased memory (`docker run -it --memory="4g" aws_cpp`):
+
+```
+yum install libcurl-devel openssl-devel libuuid-devel pulseaudio-libs-devel -y
+git clone --recurse-submodules https://github.com/aws/aws-sdk-cpp
+mkdir sdk_build
+cd sdk_build
+cmake ../aws-sdk-cpp -DCMAKE_BUILD_TYPE=Release -DBUILD_ONLY=s3 -DBUILD_SHARED_LIBS=ON
+make install
+```
+
+Running Hello S3 did not require any changes, simply cmake and make, and copy the aws credentials to /root/.aws
+
+Result:
+
+```
+bash-4.2# ./app
+Found 4buckets
+c4-final-images-033212455158-dev
+elasticbeanstalk-us-east-2-447830847150
+serverless-todo-app-dev-serverlessdeploymentbucke-qyefqouddt3h
+udagram-447830847150-dev
+```
+
+
+
