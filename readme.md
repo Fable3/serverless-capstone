@@ -136,7 +136,7 @@ dalmatian, coach dog, carriage dog: 1.0000
 
 Full process of a working OpenCV build:
 
-- in opencv-dnn, either build the Docker image (takes about 1 hour), or pull it from DockerHub
+- in opencv-dnn, either build the Docker image (takes about 1 hour), or pull it from DockerHub (see below)
 - Run the image in interactive mode: docker run -it aws_cpp_opencv
 - copy the files to the running environment: docker cp . 346c507ab859:/tmp
 
@@ -218,6 +218,8 @@ The `classifier.zip` with the not-yet-working lambda function was 45 megabytes, 
 
 Without that the zip file would be 32 megabytes.
 
+The Docker image for building c++ lambda function which supports OpenCV, AWS SDK S3 and AWS Lambda Runtime was built in 1.5 hours. The Dockerfile is in the classifier folder. The image is on DockerHub as fable3/aws-sdk-opencv.
+
 ## Implementation of classifier
 
 Problems encountered and solutions:
@@ -246,4 +248,8 @@ This was the picture in my S3 bucket:
 ![dalmatian](dog_dalmatian.jpg)
 
 The inference time was nowhere near as good as on local machine, on average 300 ms. Total time was around 500 ms.
+
+To test it from AWS CLI ('key' points to a file in the S3 bucket configured in the lambda environment)
+
+`aws lambda invoke --function-name classifiertest --payload "{\"key\":\"63c3b0c8-7e32-4672-ad8f-c3295a70d023\"}" --cli-binary-format raw-in-base64-out output_class.txt`
 
