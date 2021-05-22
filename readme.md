@@ -146,7 +146,7 @@ Then from the bash in Docker:
 bash-4.2# make
 bash-4.2# export LD_LIBRARY_PATH=/usr/local/lib64
 bash-4.2# wget http://dl.caffe.berkeleyvision.org/bvlc_googlenet.caffemodel
-bash-4.2# wget https://en.wikipedia.org/wiki/Elephant#/media/File:Elephants_at_Amboseli_national_park_against_Mount_Kilimanjaro.jpg
+bash-4.2# wget https://upload.wikimedia.org/wikipedia/commons/f/fa/Elephants_at_Amboseli_national_park_against_Mount_Kilimanjaro.jpg
 bash-4.2# ./classification googlenet -classes=classification_classes_ILSVRC2012.txt -i=Elephants_at_Amboseli_national_park_against_Mount_Kilimanjaro.jpg
 Inference time: 30.78 ms
 African elephant, Loxodonta africana: 0.8207
@@ -184,5 +184,37 @@ serverless-todo-app-dev-serverlessdeploymentbucke-qyefqouddt3h
 udagram-447830847150-dev
 ```
 
+Finally, all 3 libraries (AWS SDK, AWS Lambda Runtime, OpenCV) working together in a starter project with the following CMakeLists.txt:
 
+```cmake
+cmake_minimum_required(VERSION 3.3)
+set(CMAKE_CXX_STANDARD 11)
+project(classifier LANGUAGES CXX)
+
+message(STATUS "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
+set(BUILD_SHARED_LIBS ON CACHE STRING "Link to shared libraries by default.")
+
+#Load required services/packages: This basic example uses S3.
+find_package(AWSSDK REQUIRED COMPONENTS s3)
+find_package(aws-lambda-runtime REQUIRED)
+add_executable(${PROJECT_NAME} "main.cpp") #Add app's main starting file.
+
+set_compiler_flags(${PROJECT_NAME})
+set_compiler_warnings(${PROJECT_NAME})
+include_directories(/opt/local/include)
+include_directories(/usr/local/include/opencv4)
+link_directories(/usr/local/lib/)
+target_link_libraries(${PROJECT_NAME} PUBLIC
+                      AWS::aws-lambda-runtime
+					  opencv_core opencv_imgcodecs opencv_dnn
+                       ${AWSSDK_LINK_LIBRARIES})
+
+aws_lambda_package_target(${PROJECT_NAME})
+```
+
+From `build` folder, call `cmake .. -DCMAKE_PREFIX_PATH=/opt/local`
+
+The `classifier.zip` with the not-yet-working lambda function was 45 megabytes, which is quite close to the 50 megabyte limit. The build log showed that opencv_imgproc was added, but earlier I tested that it was not needed: `adding: lib/libopencv_imgproc.so.4.5 (deflated 58%)`
+
+Without that the zip file would be 32 megabytes.
 
