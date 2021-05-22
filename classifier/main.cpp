@@ -14,29 +14,124 @@
 
 #include <iostream>
 #include <memory>
-//#define _CRT_SECURE_NO_WARNINGS
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <unistd.h>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/dnn.hpp>
-//#include <opencv2/imgproc.hpp> 
-#include "common.hpp"
 
-using namespace aws::lambda_runtime;
+char const TAG[] = "Classifier";
+using namespace cv;
+using namespace dnn;
 
-std::string download_and_encode_file(
+std::string downloadFile(
     Aws::S3::S3Client const& client,
     Aws::String const& bucket,
     Aws::String const& key,
-    Aws::String& encoded_output);
+    Aws::Vector<uchar> &buffer)
+{
+    AWS_LOGSTREAM_INFO(TAG, "Attempting to download file from s3://" << bucket << "/" << key);
+    Aws::S3::Model::GetObjectRequest request;
+    request.WithBucket(bucket).WithKey(key);
 
-std::string encode(Aws::String const& filename, Aws::String& output);
-char const TAG[] = "LAMBDA_ALLOC";
+    auto outcome = client.GetObject(request);
+    if (outcome.IsSuccess()) {
+        AWS_LOGSTREAM_INFO(TAG, "Download success: "<< key);
+        auto& stream = outcome.GetResult().GetBody();
+        buffer.reserve(stream.tellp());
+        stream.seekg(0, stream.beg);
 
-static invocation_response my_handler(invocation_request const& req, Aws::S3::S3Client const& client)
+        char streamBuffer[1024 * 4];
+        while (stream.good()) {
+            stream.read(streamBuffer, sizeof(streamBuffer));
+            auto bytesRead = stream.gcount();
+
+            if (bytesRead > 0) {
+                buffer.insert(buffer.end(), (uchar*)streamBuffer, (uchar*)streamBuffer + bytesRead);
+            }
+        }
+        return {};
+    }
+    else {
+        AWS_LOGSTREAM_ERROR(TAG, "Failed with error: " << outcome.GetError());
+        return outcome.GetError().GetMessage();
+    }
+}
+void loadClasses(std::vector<std::string> &classes)
+{
+    std::ifstream ifs("classification_classes_ILSVRC2012.txt");
+    if (!ifs.is_open())
+    {
+        AWS_LOGSTREAM_ERROR(TAG, "Error loading classes");
+        return;
+    }
+    std::string line;
+    while (std::getline(ifs, line))
+    {
+        classes.push_back(line);
+    }
+}
+bool readFile(const char *filename, std::vector<uchar> &buffer)
+{
+    std::ifstream file(filename, std::ios::in | std::ios::binary | std::ios::ate);
+    if (file.is_open())
+    {
+        std::streampos size = file.tellg();
+        buffer.resize(size);
+        file.seekg(0, std::ios::beg);
+        uchar *target = &buffer[0];
+        file.read((char*)target, size);
+        file.close();
+        return true;
+    }
+    return false;
+}
+
+int getClassId(Aws::Vector<uchar> &img_buffer, double &inference_time, double &confidence, Net &net)
+{
+    cv::Mat blob;
+    cv::Mat rawData( 1, img_buffer.size(), CV_8UC1, (void*)&img_buffer[0]);
+	cv::Mat image = cv::imdecode( rawData, 1 );
+    // config for GoogLeNet:
+    cv::Scalar mean(104.0, 117.0, 123.0);
+	blobFromImage(image, blob, 1.0, Size(224, 224), mean, false, false);
+	//! [Set input blob]
+	net.setInput(blob);
+	//! [Set input blob]
+	//! [Make forward pass]
+	cv::Mat prob = net.forward();
+	//! [Make forward pass]
+
+	//! [Get a class with a highest score]
+	cv::Point classIdPoint;
+	minMaxLoc(prob.reshape(1, 1), 0, &confidence, 0, &classIdPoint);
+	int classId = classIdPoint.x;
+	//! [Get a class with a highest score]
+
+	// Put efficiency information.
+	std::vector<double> layersTimes;
+	double freq = getTickFrequency() / 1000;
+	inference_time = net.getPerfProfile(layersTimes) / freq;
+    return classId;
+}
+
+std::function<std::shared_ptr<Aws::Utils::Logging::LogSystemInterface>()> GetConsoleLoggerFactory()
+{
+    return [] {
+        return Aws::MakeShared<Aws::Utils::Logging::ConsoleLogSystem>(
+            "console_logger", Aws::Utils::Logging::LogLevel::Debug);
+    };
+}
+using namespace aws::lambda_runtime;
+static invocation_response my_handler(
+    invocation_request const& req,
+    Aws::S3::S3Client const& client,
+    const Aws::String &bucket,
+    Net &net, 
+    std::vector<std::string> &classes)
 {
     using namespace Aws::Utils::Json;
     JsonValue json(req.payload);
@@ -46,203 +141,98 @@ static invocation_response my_handler(invocation_request const& req, Aws::S3::S3
 
     auto v = json.View();
 
-    if (!v.ValueExists("s3bucket") || !v.ValueExists("s3key") || !v.GetObject("s3bucket").IsString() ||
-        !v.GetObject("s3key").IsString()) {
-        return invocation_response::failure("Missing input value s3bucket or s3key", "InvalidJSON");
+    if (!v.ValueExists("key") || !v.GetObject("key").IsString()) {
+        return invocation_response::failure("Missing input value 'key'", "InvalidJSON");
     }
 
-    auto bucket = v.GetString("s3bucket");
-    auto key = v.GetString("s3key");
+    auto key = v.GetString("key");
 
     AWS_LOGSTREAM_INFO(TAG, "Attempting to download file from s3://" << bucket << "/" << key);
+    Aws::Vector<uchar> buffer;
+    auto err = downloadFile(client, bucket, key, buffer);
 
-    Aws::String base64_encoded_file;
-    auto err = download_and_encode_file(client, bucket, key, base64_encoded_file);
     if (!err.empty()) {
         return invocation_response::failure(err, "DownloadFailure");
     }
-
-    return invocation_response::success(base64_encoded_file, "application/base64");
+    
+    double inference_time=0;
+    double confidence=0;
+    int classId = getClassId(buffer, inference_time, confidence, net);
+    std::string label;
+    if ((unsigned int)classId>=classes.size()) label = format("Class #%d", classId);
+    else label = classes[classId];
+    std::string logline = format("Inference result: '%s' confidence %.4f in %.4fms",
+            label.c_str(),
+            confidence, inference_time);
+	std::cout << logline << std::endl;
+    Aws::String result = format("{ \"label\": \"%s\" }", label.c_str());
+    return invocation_response::success(result, "text/json");
 }
 
-std::function<std::shared_ptr<Aws::Utils::Logging::LogSystemInterface>()> GetConsoleLoggerFactory()
+int main(int argc, char **argv)
 {
-    return [] {
-        return Aws::MakeShared<Aws::Utils::Logging::ConsoleLogSystem>(
-            "console_logger", Aws::Utils::Logging::LogLevel::Trace);
-    };
-}
+    char temp[255];
+    temp[0]=0;
+    getcwd(temp, sizeof(temp));
+    const char *arg0="<none>";
+    if (argc>0) arg0=argv[0];
+    std::cout<<"Starting in "<<temp<<" as "<<arg0<<std::endl;
 
-int main1()
-{
+    double start_t = (double)cv::getTickCount();
     using namespace Aws;
     SDKOptions options;
-    options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Trace;
-    options.loggingOptions.logger_create_fn = GetConsoleLoggerFactory();
+    //options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Debug;
+    //options.loggingOptions.logger_create_fn = GetConsoleLoggerFactory();
     InitAPI(options);
+    double t = (double)cv::getTickCount();
+    std::cout<<"InitAPI in "<<((t-start_t) / cv::getTickFrequency())*1000<<"ms"<<std::endl;
+    start_t=t;
     {
-        Client::ClientConfiguration config;
-        config.region = Aws::Environment::GetEnv("AWS_REGION");
-        config.caFile = "/etc/pki/tls/certs/ca-bundle.crt";
-
+        std::vector<std::string> classes;
+        loadClasses(classes);
+        Client::ClientConfiguration client_config;
+        client_config.region = Aws::Environment::GetEnv("AWS_REGION");
+        client_config.caFile = "/etc/pki/tls/certs/ca-bundle.crt";
         auto credentialsProvider = Aws::MakeShared<Aws::Auth::EnvironmentAWSCredentialsProvider>(TAG);
-        S3::S3Client client(credentialsProvider, config);
-        auto handler_fn = [&client](aws::lambda_runtime::invocation_request const& req) {
-            return my_handler(req, client);
+        S3::S3Client client(credentialsProvider, client_config);
+        Aws::String bucket = Aws::Environment::GetEnv("IMAGES_S3_BUCKET");
+        Aws::Vector<uchar> dnn_model;
+        readFile("bvlc_googlenet.caffemodel", dnn_model);
+        if (dnn_model.empty())
+        {
+            auto err = downloadFile(client, bucket, "bvlc_googlenet.caffemodel", dnn_model);
+            if (!err.empty())
+            {
+                AWS_LOGSTREAM_ERROR(TAG, "Unable to download weights: " << err);
+            }
+            t = (double)cv::getTickCount();
+            std::cout<<"Model downloaded in "<<((t-start_t) / cv::getTickFrequency())*1000<<"ms"<<std::endl;
+            start_t=t;
+        } else
+        {
+            t = (double)cv::getTickCount();
+            std::cout<<"Model read from file in "<<((t-start_t) / cv::getTickFrequency())*1000<<"ms"<<std::endl;
+            start_t=t;
+        }
+        Aws::Vector<uchar> dnn_config;
+        readFile("bvlc_googlenet.prototxt", dnn_config);
+        Net net = readNetFromCaffe(dnn_config, dnn_model);
+
+        // test: 
+        /*Aws::Vector<uchar> test_img;
+        readFile("test_img.jpg", test_img);
+        double inference_time, confidence;
+        int classId = getClassId(test_img, inference_time, confidence, net);
+        std::string label = format("%s: %.4f in %.4fms",
+            ((unsigned int)classId>=classes.size() ? format("Class #%d", classId).c_str() : classes[classId].c_str()),
+            confidence, inference_time);
+	    std::cout << label << std::endl;*/
+
+        auto handler_fn = [&client, &bucket, &net, &classes](aws::lambda_runtime::invocation_request const& req) {
+            return my_handler(req, client, bucket, net, classes);
         };
         run_handler(handler_fn);
     }
     ShutdownAPI(options);
-    return 0;
-}
-
-std::string encode(Aws::IOStream& stream, Aws::String& output)
-{
-    Aws::Vector<unsigned char> bits;
-    bits.reserve(stream.tellp());
-    stream.seekg(0, stream.beg);
-
-    char streamBuffer[1024 * 4];
-    while (stream.good()) {
-        stream.read(streamBuffer, sizeof(streamBuffer));
-        auto bytesRead = stream.gcount();
-
-        if (bytesRead > 0) {
-            bits.insert(bits.end(), (unsigned char*)streamBuffer, (unsigned char*)streamBuffer + bytesRead);
-        }
-    }
-    Aws::Utils::ByteBuffer bb(bits.data(), bits.size());
-    output = Aws::Utils::HashingUtils::Base64Encode(bb);
-    return {};
-}
-
-std::string download_and_encode_file(
-    Aws::S3::S3Client const& client,
-    Aws::String const& bucket,
-    Aws::String const& key,
-    Aws::String& encoded_output)
-{
-    using namespace Aws;
-
-    S3::Model::GetObjectRequest request;
-    request.WithBucket(bucket).WithKey(key);
-
-    auto outcome = client.GetObject(request);
-    if (outcome.IsSuccess()) {
-        AWS_LOGSTREAM_INFO(TAG, "Download completed!");
-        auto& s = outcome.GetResult().GetBody();
-        return encode(s, encoded_output);
-    }
-    else {
-        AWS_LOGSTREAM_ERROR(TAG, "Failed with error: " << outcome.GetError());
-        return outcome.GetError().GetMessage();
-    }
-}
-
-std::string keys =
-    "{ help  h     | | Print help message. }"
-    "{ @alias      | | An alias name of model to extract preprocessing parameters from models.yml file. }"
-    "{ zoo         | models.yml | An optional path to file with preprocessing parameters }"
-    "{ input i     | | Path to input image or video file. Skip this argument to capture frames from a camera.}"
-    "{ framework f | | Optional name of an origin framework of the model. Detect it automatically if it does not set. }"
-    "{ classes     | | Optional path to a text file with names of classes. }"
-    "{ backend     | 0 | Choose one of computation backends: "
-                        "0: automatically (by default), "
-                        "1: Halide language (http://halide-lang.org/), "
-                        "2: Intel's Deep Learning Inference Engine (https://software.intel.com/openvino-toolkit), "
-                        "3: OpenCV implementation }"
-    "{ target      | 0 | Choose one of target computation devices: "
-                        "0: CPU target (by default), "
-                        "1: OpenCL, "
-                        "2: OpenCL fp16 (half-float precision), "
-                        "3: VPU }";
-
-using namespace cv;
-using namespace dnn;
-
-std::vector<std::string> classes;
-
-int main(int argc, char** argv)
-{
-    CommandLineParser parser(argc, argv, keys);
-
-    const std::string modelName = parser.get<String>("@alias");
-    const std::string zooFile = parser.get<String>("zoo");
-
-    keys += genPreprocArguments(modelName, zooFile);
-
-    parser = CommandLineParser(argc, argv, keys);
-    parser.about("Use this script to run classification deep learning networks using OpenCV.");
-    if (argc == 1 || parser.has("help"))
-    {
-        parser.printMessage();
-        return 0;
-    }
-
-    float scale = parser.get<float>("scale");
-    Scalar mean = parser.get<Scalar>("mean");
-    bool swapRB = parser.get<bool>("rgb");
-    int inpWidth = parser.get<int>("width");
-    int inpHeight = parser.get<int>("height");
-    String model = findFile(parser.get<String>("model"));
-    String config = findFile(parser.get<String>("config"));
-    String framework = parser.get<String>("framework");
-    int backendId = parser.get<int>("backend");
-    int targetId = parser.get<int>("target");
-
-    // Open file with classes names.
-    if (parser.has("classes"))
-    {
-        std::string file = parser.get<String>("classes");
-        std::ifstream ifs(file.c_str());
-        if (!ifs.is_open())
-            CV_Error(Error::StsError, "File " + file + " not found");
-        std::string line;
-        while (std::getline(ifs, line))
-        {
-            classes.push_back(line);
-        }
-    }
-
-    if (!parser.check())
-    {
-        parser.printErrors();
-        return 1;
-    }
-    CV_Assert(!model.empty());
-
-    //! [Read and initialize network]
-    Net net = readNet(model, config, framework);
-    net.setPreferableBackend(backendId);
-    net.setPreferableTarget(targetId);
-	Mat blob;
-	cv::Mat image = imread(parser.get<String>("input"));
-	blobFromImage(image, blob, scale, Size(inpWidth, inpHeight), mean, swapRB, false);
-	//! [Set input blob]
-	net.setInput(blob);
-	//! [Set input blob]
-	//! [Make forward pass]
-	Mat prob = net.forward();
-	//! [Make forward pass]
-
-	//! [Get a class with a highest score]
-	Point classIdPoint;
-	double confidence;
-	minMaxLoc(prob.reshape(1, 1), 0, &confidence, 0, &classIdPoint);
-	int classId = classIdPoint.x;
-	//! [Get a class with a highest score]
-
-	// Put efficiency information.
-	std::vector<double> layersTimes;
-	double freq = getTickFrequency() / 1000;
-	double t = net.getPerfProfile(layersTimes) / freq;
-	std::string label = format("Inference time: %.2f ms", t);
-	std::cout << label << std::endl;
-	// Print predicted class.
-	label = format("%s: %.4f", (classes.empty() ? format("Class #%d", classId).c_str() :
-		classes[classId].c_str()),
-		confidence);
-	std::cout << label << std::endl;
-
     return 0;
 }

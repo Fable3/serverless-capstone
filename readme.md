@@ -218,3 +218,20 @@ The `classifier.zip` with the not-yet-working lambda function was 45 megabytes, 
 
 Without that the zip file would be 32 megabytes.
 
+## Implementation of classifier
+
+Problems encountered and solutions:
+
+- S3 name is global, but when using the C++ AWS SDK, the GetObject can return with a permanent redirect error. The SDK tries to put in the AWS_REGION, and it has to match with the region of creation. More here: https://aws.amazon.com/premiumsupport/knowledge-center/s3-http-307-response/
+- AWS SDK logs a lot, it dumps the 50Mb GoogLeNet model on Debug level after fetching it from an S3 bucket (with CURL tag). I switched it off and used my own logs only.
+
+To build the lambda function in its development Docker image:
+
+```sh
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/local
+make
+make aws-lambda-package-classifier
+```
+
