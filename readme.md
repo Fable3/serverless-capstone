@@ -235,3 +235,15 @@ make
 make aws-lambda-package-classifier
 ```
 
+To test the function, I've added the data files manually to the root of the zip file, which is the working directory of the lambda function. The code upload from AWS CLI failed several times, even though the 10 Mb "hello.zip" was uploaded without problem. I could only update the code through the AWS Console. I had to increase the timeout, because at cold start, the 50 Mb GoogLeNet model is downloaded from an S3 bucket.
+
+Here's the result of the first successful test:
+
+![first test](first_classifier_success.png)
+
+This was the picture in my S3 bucket:
+
+![dalmatian](dog_dalmatian.jpg)
+
+The inference time was nowhere near as good as on local machine, on average 300 ms. Total time was around 500 ms.
+
