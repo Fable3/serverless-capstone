@@ -253,3 +253,67 @@ To test it from AWS CLI ('key' points to a file in the S3 bucket configured in t
 
 `aws lambda invoke --function-name classifiertest --payload "{\"key\":\"63c3b0c8-7e32-4672-ad8f-c3295a70d023\"}" --cli-binary-format raw-in-base64-out output_class.txt`
 
+## Backend development
+
+The starter code is the serverless version of Udagram. The frontend is already working for this project, so I could concentrate on the backend.
+
+- Registered a new app in auth0 for RS256 authorizer, filled in certificate in the backend and domain + client id in the client config.ts.
+
+- serverless-plugin-canary-deployments caused deployment error when creating `CodeDeployServiceRole`, referring to an obsolete  policy `arn:aws:iam::aws:policy/AWSLambdaFullAccess`.
+
+- added unique names to S3 buckets including my AWS user id
+
+- updated serverless-iam-roles-per-function to 3.2.0
+
+- deployed the functions, filled in api endpoint in client config.ts
+
+- changed the functions to have their own iamRoleStatements, following the "least privilege" rule:
+
+  ```yaml
+    CreateGroup:
+      iamRoleStatements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+          Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GROUPS_TABLE}
+  ```
+
+- Changed the validator to the new serverless syntax:
+
+```yaml
+  CreateGroup:
+    handler: src/lambda/http/createGroup.handler
+    events:
+      - http:
+          method: post
+          path: groups
+          cors: true
+          authorizer: RS256Auth
+          request:
+            schema:
+              application/json: ${file(models/create-group-request.json)}
+```
+
+- fixed SIGNED_URL_EXPIRATION to be number: `const urlExpiration = Number(process.env.SIGNED_URL_EXPIRATION)`
+
+- using Winston logger:
+
+  ```typescript
+  import { createLogger } from '../../utils/logger'
+  const logger = createLogger('createGroup')
+  
+  export const handler = middy(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    logger.info('Caller event', {event})
+  ```
+
+- Checked that AWS XRay is correctly set up: `const XAWS = AWSXRay.captureAWS(AWS)`
+
+- re-implemented lambda/http/getGroups.ts, which was using express
+
+- created requests/CreateImageRequest to be in line with CreateGroupRequest and the json validators
+
+- implemented all functions in database access and business logic, separated from labda functions
+
+- moved getUserId to a common util function to avoid code duplication
+
+- using middy middleware to add CORS headers

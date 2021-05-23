@@ -1,23 +1,25 @@
 import 'source-map-support/register'
-import { getAllGroups } from '../../businessLogic/groups';
+import { getAllGroups } from '../../businessLogic/groups'
+import * as middy from 'middy'
+import { cors } from 'middy/middlewares'
 
-import { APIGatewayProxyEvent, APIGatewayProxyResult, APIGatewayProxyHandler } from 'aws-lambda'
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 
-//import { createLogger } from '../../utils/logger'
-//const logger = createLogger('getTODOs')
+import { createLogger } from '../../utils/logger'
+const logger = createLogger('getGroups')
 
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  //logger.info('getGroups',{event})
-  console.log('getGroups',event)
+export const handler = middy(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  logger.info('getGroups',{event}) 
   const groups = await getAllGroups()
 
-  //logger.info('result', groups);
+  logger.info('result', groups);
 
   return  {
     statusCode: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*'
-    },
     body: JSON.stringify({items: groups })
   }
-}
+})
+
+handler.use(
+  cors()
+)

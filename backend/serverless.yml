@@ -7,8 +7,6 @@ plugins:
   - serverless-aws-documentation
 #  - serverless-plugin-canary-deployments
   - serverless-iam-roles-per-function
-#  - serverless-dynamodb-local
-#  - serverless-offline
 
 # Uncomment to enable individual packaging
 # package:
@@ -39,29 +37,6 @@ provider:
 custom:
   topicName: imagesTopic-${self:provider.stage}
 
-  serverless-offline:
-    port: 3003
-
-  dynamodb:
-    start:
-      port: 8000
-      inMemory: true
-      migrate: true
-
-  documentation:
-    api:
-      info:
-        version: v1.0.0
-        title: Udagram API
-        description: Serverless application for images sharing
-    models:
-      - name: GroupRequest
-        contentType: application/json
-        schema: ${file(models/create-group-request.json)}
-      - name: ImageRequest
-        contentType: application/json
-        schema: ${file(models/create-image-request.json)}
-
 functions:
 
   RS256Auth:
@@ -91,20 +66,15 @@ functions:
           path: groups
           cors: true
           authorizer: RS256Auth
-          reqValidatorName: RequestBodyValidator
-          documentation:
-            summary: Create a new group
-            description: Create a new group
-            requestModels:
-              'application/json': GroupRequest
+          request:
+            schema:
+              application/json: ${file(models/create-group-request.json)}
+
     iamRoleStatements:
       - Effect: Allow
         Action:
           - dynamodb:PutItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GROUPS_TABLE}
-    deploymentSettings:
-      type: Linear10PercentEvery1Minute
-      alias: Live
 
   GetImages:
     handler: src/lambda/http/getImages.handler
@@ -131,12 +101,10 @@ functions:
           authorizer: RS256Auth
           path: groups/{groupId}/images
           cors: true
-          reqValidatorName: RequestBodyValidator
-          documentation:
-            summary: Create a new image
-            description: Create a new image
-            requestModels:
-              'application/json': ImageRequest
+          request:
+            schema:
+              application/json: ${file(models/create-image-request.json)}
+
     iamRoleStatements:
       - Effect: Allow
         Action:
@@ -267,15 +235,6 @@ resources:
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:provider.environment.CONNECTIONS_TABLE}
-
-    RequestBodyValidator:
-      Type: AWS::ApiGateway::RequestValidator
-      Properties:
-        Name: 'request-body-validator'
-        RestApiId:
-          Ref: ApiGatewayRestApi
-        ValidateRequestBody: true
-        ValidateRequestParameters: false
 
     AttachmentsBucket:
       Type: AWS::S3::Bucket
