@@ -349,7 +349,7 @@ Here's the result (dalmatian, coach dog, carriage dog share a common label in th
 
 When I tested it a bit, some of the calls ran randomly into an error: `Error: Runtime exited with error: signal: broken pipe`
 
-I've increased the memory of the lambda function to 1GB, which also means faster processing time (it's linked in AWS), so the inference time dropped to 150 ms, total time around 200 ms.
+I've increased the memory of the lambda function to 1GB, which also means faster processing time (it's linked in AWS), so the inference time dropped to 150 ms, total time around 200 ms. Cold start duration dropped to 1 second.
 
 The automatic retry strategy is only valid for asynchronous calls, I simply do it from code.
 
