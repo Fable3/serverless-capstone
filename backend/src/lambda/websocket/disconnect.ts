@@ -6,7 +6,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   console.log('Websocket disconnect', event)
 
   const connectionId = event.requestContext.connectionId
-  deleteConnection(connectionId)
+  await deleteConnection(connectionId)
   const key = {
       id: connectionId
   }

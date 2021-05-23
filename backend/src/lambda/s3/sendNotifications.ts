@@ -26,7 +26,7 @@ async function processS3Event(s3Event: S3Event) {
     const key = record.s3.object.key
     logger.info('Processing S3 item with key: ', {key})
 
-    updateClassLabel(key);
-    notifyAllClients(key);    
+    await updateClassLabel(key);
+    await notifyAllClients(key);    
   }
 }

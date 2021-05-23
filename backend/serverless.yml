@@ -156,6 +156,10 @@ functions:
         Action:
           - "lambda:InvokeFunction"
         Resource: "*"
+      - Effect: Allow
+        Action:
+          - execute-api:ManageConnections
+        Resource: arn:aws:execute-api:${self:provider.region}:*:*/${self:provider.stage}/*/@connections/*
 
   ResizeImage:
     handler: src/lambda/s3/resizeImage.handler

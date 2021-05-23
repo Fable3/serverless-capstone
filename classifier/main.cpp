@@ -133,6 +133,7 @@ static invocation_response my_handler(
     Net &net, 
     std::vector<std::string> &classes)
 {
+    std::cout<<"request "<<req.payload<<std::endl;
     using namespace Aws::Utils::Json;
     JsonValue json(req.payload);
     if (!json.WasParseSuccessful()) {
@@ -154,6 +155,7 @@ static invocation_response my_handler(
     if (!err.empty()) {
         return invocation_response::failure(err, "DownloadFailure");
     }
+    std::cout<<"download success "<<buffer.size()<<" bytes"<<std::endl;
     
     double inference_time=0;
     double confidence=0;
@@ -196,11 +198,12 @@ int main(int argc, char **argv)
         auto credentialsProvider = Aws::MakeShared<Aws::Auth::EnvironmentAWSCredentialsProvider>(TAG);
         S3::S3Client client(credentialsProvider, client_config);
         Aws::String bucket = Aws::Environment::GetEnv("IMAGES_S3_BUCKET");
+        Aws::String dnn_bucket = Aws::Environment::GetEnv("DNN_S3_BUCKET");
         Aws::Vector<uchar> dnn_model;
         readFile("bvlc_googlenet.caffemodel", dnn_model);
         if (dnn_model.empty())
         {
-            auto err = downloadFile(client, bucket, "bvlc_googlenet.caffemodel", dnn_model);
+            auto err = downloadFile(client, dnn_bucket, "bvlc_googlenet.caffemodel", dnn_model);
             if (!err.empty())
             {
                 AWS_LOGSTREAM_ERROR(TAG, "Unable to download weights: " << err);

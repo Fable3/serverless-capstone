@@ -7,7 +7,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
 
   const connectionId = event.requestContext.connectionId
 
-  storeConnection(connectionId)
+  await storeConnection(connectionId)
 
   return {
     statusCode: 200,
