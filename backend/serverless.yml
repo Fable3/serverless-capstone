@@ -3,14 +3,15 @@ service:
 
 plugins:
   - serverless-webpack
-  - serverless-reqvalidator-plugin
+#  - serverless-reqvalidator-plugin
   - serverless-aws-documentation
 #  - serverless-plugin-canary-deployments
   - serverless-iam-roles-per-function
 
 # Uncomment to enable individual packaging
 # package:
-#   individually: true
+#  individually: true
+
 
 provider:
   name: aws
@@ -31,6 +32,7 @@ provider:
     IMAGES_S3_BUCKET: serverless-udagram-images-033212455158-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
     THUMBNAILS_S3_BUCKET: serverless-udagram-thumbnail-033212455158-${self:provider.stage}
+    DNN_S3_BUCKET: dnn-model-bucket-447830847150
     AUTH_0_SECRET_ID: Auth0Secret-${self:provider.stage}
     AUTH_0_SECRET_FIELD: auth0Secret
 
@@ -206,6 +208,18 @@ functions:
         Action:
           - dynamodb:DeleteItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CONNECTIONS_TABLE}
+
+  #classifier:
+  #  handler: classifier.handler
+  #  runtime: provided
+  #  timeout: 180
+  #  memorySize: 1024
+  #  package:
+  #    artifact: s3://dnn-model-bucket-447830847150/classifier.zip
+  #  events:
+  #    - http:
+  #        method: get
+  #        path: classifier/{key}
 
   # SyncWithElasticsearch:
   #   environment:
