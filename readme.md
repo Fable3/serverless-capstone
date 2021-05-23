@@ -4,6 +4,16 @@ My project demonstrates the capabilities of high-performance lambda functions. W
 
 I'm re-using the Udagram project, which is a lightweight image sharing application, and will add a function to classify the uploaded images with a deep neural network using OpenCV.
 
+The client side can be run locally to test the backend, and wscat to test websockets.
+
+The development environment setup for building C++ lambda functions, I've created a Docker image with the necessary libraries installed, and uploaded it to DockerHub for anyone to use.
+
+The labels are shown next to the timestamp like on this screenshot:
+
+![frontend screenshot](frontend_screenshot.png)
+
+
+
 ## Creating C++ Lambda function
 
 There was an article from 2018. November about "Introducing the C++ Lambda Runtime". The blog post can be read here: https://aws.amazon.com/blogs/compute/introducing-the-c-lambda-runtime/
@@ -214,9 +224,9 @@ aws_lambda_package_target(${PROJECT_NAME})
 
 From `build` folder, call `cmake .. -DCMAKE_PREFIX_PATH=/opt/local`
 
-The `classifier.zip` with the not-yet-working lambda function was 45 megabytes, which is quite close to the 50 megabyte limit. The build log showed that opencv_imgproc was added, but earlier I tested that it was not needed: `adding: lib/libopencv_imgproc.so.4.5 (deflated 58%)`
+The `classifier.zip` with the not-yet-working lambda function was 45 megabytes, which is quite close to the 50 megabyte limit. 
 
-Without that the zip file would be 32 megabytes.
+After having troubles of uploading the zip as a lambda function code, especially from AWS CLI, I switched to uploading to an S3 bucket and uploading to lambda from there, and it was much faster and reliable.
 
 The Docker image for building c++ lambda function which supports OpenCV, AWS SDK S3 and AWS Lambda Runtime was built in 1.5 hours. The Dockerfile is in the classifier folder. The image is on DockerHub as fable3/aws-sdk-opencv.
 
@@ -352,4 +362,180 @@ When I tested it a bit, some of the calls ran randomly into an error: `Error: Ru
 I've increased the memory of the lambda function to 1GB, which also means faster processing time (it's linked in AWS), so the inference time dropped to 150 ms, total time around 200 ms. Cold start duration dropped to 1 second.
 
 The automatic retry strategy is only valid for asynchronous calls, I simply do it from code.
+
+Since the C++ code can only be build within the special Docker image, to avoid uploading it with every deploy, the zip file is in an S3 bucket, where the GoogLeNet model is also stored. Serverless framework supports mixed platforms and deployment from S3 bucket: https://www.serverless.com/framework/docs/providers/aws/guide/packaging/
+
+https://www.serverless.com/blog/building-mutliple-runtimes
+
+However, it doesn't work together, so I kept the commented out 'classifier' deployment in the serverless.yml.
+
+## Websockets
+
+The tricky part here was the iamRoleStatements for SendUploadNotifications:
+
+```yaml
+	- Effect: Allow
+        Action:
+          - execute-api:ManageConnections
+        Resource: arn:aws:execute-api:${self:provider.region}:*:*/${self:provider.stage}/*/@connections/*
+```
+
+To test it:
+
+```
+npm install -g wscat
+wscat -c wss://e04zdwcrs6.execute-api.us-east-1.amazonaws.com/dev
+```
+
+![websocket test](websocket_test.png)
+
+
+
+## Project Rubrics
+
+#### (Option 2): Functionality
+
+```
+The application allows users to create, update, delete items
+A user of the web application can use the interface to create, delete and complete an item.
+```
+
+Using the Udagram functionality, users can create groups, upload images into them. The items get updated automatically from a S3 upload trigger, which attaches a class label, the output of the GoogLeNet image classification.
+
+Websocket also works, the connection database gets updated automatically, creating entries on connection, and deleting on disconnect.
+
+```
+The application allows users to upload a file.
+A user of the web interface can click on a "pencil" button, then select and upload a file. A file should appear in the list of items on the home page.
+```
+
+Users can upload images into groups after authentication.
+
+```
+The application only displays items for a logged in user.
+If you log out from a current user and log in as a different user, the application should not show items created by the first account.
+```
+
+This functionality would not make sense for Udagram.
+
+```
+Authentication is implemented and does not allow unauthenticated access.
+
+A user needs to authenticate in order to use an application.
+```
+
+Image upload is denied if user is not authenticated, but only shown in the debug window, the frontend is missing error handling, and it was out of scope.
+
+#### (Option 2):Codebase
+
+```
+The code is split into multiple layers separating business logic from I/O related code.
+Code of Lambda functions is split into multiple files/classes. The business logic of an application is separated from code for database access, file storage, and code related to AWS Lambda.
+```
+
+I have 3 layers, data access, business logic, and the lambda functions. Note that there's a lambda invoke in the data access layer, which is related to AWS Lambda, but it is not a handler.
+
+```
+Code is implemented using async/await and Promises without using callbacks.
+
+To get results of asynchronous operations, a student is using async/await constructs instead of passing callbacks.
+```
+
+I used async/await everywhere. In a few cases, I pass on the promise object through the business logic.
+
+#### (Option 2):Best practices
+
+```
+All resources in the application are defined in the "serverless.yml" file
+All resources needed by an application are defined in the "serverless.yml". A developer does not need to create them manually using AWS console.
+```
+
+There's an exception to this with the GoogLeNet model file, which is an external dependency, and should be downloaded from the original web address. To speed up cold start, I created a proxy S3 bucket for the Deep Neural Network file, named DNN_S3_BUCKET. At startup, the classifier pulls the 50 Mb image from this bucket instead of an external web address.
+
+```
+Each function has its own set of permissions.
+Instead of defining all permissions under provider/iamRoleStatements, permissions are defined per function in the functions section of the "serverless.yml".
+```
+
+I've set up permissions for each function.
+
+```
+Application has sufficient monitoring.
+Application has at least some of the following:
+- Distributed tracing is enabled
+- It has a sufficient amount of log statements
+- It generates application level metrics
+```
+
+I use Winston logger, AWS XRay, and lots of log statements which I had to use a lot during development. I used the metrics which AWS provided. Here's a blog entry which I found useful about efficient metric generation: https://aws.amazon.com/blogs/mt/lowering-costs-and-focusing-on-our-customers-with-amazon-cloudwatch-embedded-custom-metrics/
+
+```
+HTTP requests are validated
+Incoming HTTP requests are validated either in Lambda handlers or using request validation in API Gateway. The latter can be done either using the serverless-reqvalidator-plugin or by providing request schemas in function definitions.
+```
+
+I use the new format:
+
+```yml
+  CreateGroup:
+    handler: src/lambda/http/createGroup.handler
+    events:
+      - http:
+          method: post
+          path: groups
+          cors: true
+          authorizer: RS256Auth
+          request:
+            schema:
+              application/json: ${file(models/create-group-request.json)}
+```
+
+```
+Data is stored in a table with a composite key.
+1:M (1 to many) relationship between users and items is modeled using a DynamoDB table that has a composite key with both partition and sort keys. Should be defined similar to this:
+   KeySchema:
+      - AttributeName: partitionKey
+        KeyType: HASH
+      - AttributeName: sortKey
+        KeyType: RANGE
+```
+
+Here's my schema with complex key and index:
+
+```yaml
+    ImagesDynamoDBTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: groupId
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: S
+          - AttributeName: imageId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: groupId
+            KeyType: HASH
+          - AttributeName: timestamp
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+        TableName: ${self:provider.environment.IMAGES_TABLE}
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.IMAGE_ID_INDEX}
+            KeySchema:
+            - AttributeName: imageId
+              KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+```
+
+```
+Scan operation is not used to read data from a database.
+Items are fetched using the "query()" method and not "scan()" method (which is less efficient on large datasets)
+```
+
+Scan is used only for Websocket support, where the all entries are needed from the small connection database.
 
