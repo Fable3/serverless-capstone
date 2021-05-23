@@ -1,69 +1,37 @@
-import { APIGatewayProxyHandler, APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import 'source-map-support/register'
-import * as AWS  from 'aws-sdk'
-import * as AWSXRay from 'aws-xray-sdk'
 
-const XAWS = AWSXRay.captureAWS(AWS)
+import { getImagesInGroup } from '../../businessLogic/groups'
 
-const docClient = new XAWS.DynamoDB.DocumentClient()
+import * as middy from 'middy'
+import { cors } from 'middy/middlewares'
+import { createLogger } from '../../utils/logger'
+const logger = createLogger('getImages')
 
-const groupsTable = process.env.GROUPS_TABLE
-const imagesTable = process.env.IMAGES_TABLE
+export const handler = middy(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
 
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-
-  console.log('Caller event', event)
+  logger.info('Caller event', {event})
   const groupId = event.pathParameters.groupId
-  const validGroupId = await groupExists(groupId)
 
-  if (!validGroupId) {
+  try {
+    const images = await getImagesInGroup(groupId)
+    logger.info('result', {images})
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        items: images
+      })
+    }
+  } catch (error)
+  {
+    logger.error('error', {error})
     return {
       statusCode: 404,
-      headers: {
-        'Access-Control-Allow-Origin': '*'
-      },
       body: JSON.stringify({
-        error: 'Group does not exist'
+        error
       })
     }
   }
+})
 
-  const images = await getImagesPerGroup(groupId)
-
-  return {
-    statusCode: 201,
-    headers: {
-      'Access-Control-Allow-Origin': '*'
-    },
-    body: JSON.stringify({
-      items: images
-    })
-  }
-}
-
-async function groupExists(groupId: string) {
-  const result = await docClient
-    .get({
-      TableName: groupsTable,
-      Key: {
-        id: groupId
-      }
-    })
-    .promise()
-
-  console.log('Get group: ', result)
-  return !!result.Item
-}
-
-async function getImagesPerGroup(groupId: string) {
-  const result = await docClient.query({
-    TableName: imagesTable,
-    KeyConditionExpression: 'groupId = :groupId',
-    ExpressionAttributeValues: {
-      ':groupId': groupId
-    },
-    ScanIndexForward: false
-  }).promise()
-
-  return result.Items
-}
+handler.use(cors())

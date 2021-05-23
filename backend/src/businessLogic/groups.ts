@@ -55,3 +55,10 @@ export async function createImage(
   }
 }
 
+export async function getImage(imageId : string) {
+  return groupAccess.getImage(imageId)
+}
+
+export async function getImagesInGroup(groupId : string){
+  return groupAccess.getImagesInGroup(groupId)
+}

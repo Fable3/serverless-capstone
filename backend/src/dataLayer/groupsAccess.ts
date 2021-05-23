@@ -17,6 +17,7 @@ export class GroupAccess {
     private readonly docClient: DocumentClient = createDynamoDBClient(),
     private s3 = createS3Client(),
     private readonly imagesTable = process.env.IMAGES_TABLE,
+    private readonly imageIdIndex = process.env.IMAGE_ID_INDEX,
     private readonly bucketName = process.env.IMAGES_S3_BUCKET,
     private readonly urlExpiration = Number(process.env.SIGNED_URL_EXPIRATION),
     private readonly groupsTable = process.env.GROUPS_TABLE) {
@@ -85,6 +86,39 @@ export class GroupAccess {
     return newItem
   }
 
+  async getImage(imageId : string) {
+      const result = await this.docClient.query({
+        TableName : this.imagesTable,
+        IndexName : this.imageIdIndex,
+        KeyConditionExpression: 'imageId = :imageId',
+        ExpressionAttributeValues: {
+            ':imageId': imageId
+        }
+    }).promise()
+
+    if (result.Count == 0) {
+      throw new Error('image not found')
+    }
+    return result.Items[0]    
+  }
+
+  async getImagesInGroup(groupId : string) {
+    const validGroupId = await this.groupExists(groupId)
+    if (!validGroupId) {
+      throw new Error('Group does not exist')
+    }
+    const result = await this.docClient.query({
+      TableName: this.imagesTable,
+      KeyConditionExpression: 'groupId = :groupId',
+      ExpressionAttributeValues: {
+        ':groupId': groupId
+      },
+      ScanIndexForward: false
+    }).promise()
+  
+    return result.Items
+  }
+
 }
 
 function createDynamoDBClient() {
@@ -104,3 +138,4 @@ function createS3Client() {
     signatureVersion: 'v4'
   })
 }
+

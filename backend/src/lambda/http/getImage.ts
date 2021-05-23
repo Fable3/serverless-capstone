@@ -1,41 +1,33 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda'
 import 'source-map-support/register'
-import * as AWS  from 'aws-sdk'
-import * as AWSXRay from 'aws-xray-sdk'
 
-const XAWS = AWSXRay.captureAWS(AWS)
-
-const docClient = new XAWS.DynamoDB.DocumentClient()
-
-const imagesTable = process.env.IMAGES_TABLE
-const imageIdIndex = process.env.IMAGE_ID_INDEX
+import { getImage } from '../../businessLogic/groups'
 
 import * as middy from 'middy'
 import { cors } from 'middy/middlewares'
 
+import { createLogger } from '../../utils/logger'
+const logger = createLogger('getGroups')
+
 export const handler = middy(async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   console.log('Caller event', event)
   const imageId = event.pathParameters.imageId
+  logger.info('getImage', {event})
 
-  const result = await docClient.query({
-      TableName : imagesTable,
-      IndexName : imageIdIndex,
-      KeyConditionExpression: 'imageId = :imageId',
-      ExpressionAttributeValues: {
-          ':imageId': imageId
-      }
-  }).promise()
-
-  if (result.Count !== 0) {
+  try {
+    const result = getImage(imageId)
+    logger.info('result', {result})
     return {
       statusCode: 200,
-      body: JSON.stringify(result.Items[0])
+      body: JSON.stringify(result)
     }
-  }
-
-  return {
-    statusCode: 404,
-    body: ''
+  } catch (error)
+  {
+    logger.error('not found', {error})
+    return {
+      statusCode: 404,
+      body: ''
+    }
   }
 })
 
