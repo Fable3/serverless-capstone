@@ -4,6 +4,9 @@ import * as AWS  from 'aws-sdk'
 import * as AWSXRay from 'aws-xray-sdk'
 const XAWS = AWSXRay.captureAWS(AWS)
 
+//import { GroupAccess } from '../dataLayer/groupsAccess'
+import { setImageClassLabel } from '../../businessLogic/groups'
+
 const docClient = new XAWS.DynamoDB.DocumentClient()
 
 const connectionsTable = process.env.CONNECTIONS_TABLE
@@ -51,13 +54,26 @@ async function processS3Event(s3Event: S3Event) {
   for (const record of s3Event.Records) {
     const key = record.s3.object.key
     logger.info('Processing S3 item with key: ', {key})
-
-    try {
-      const class_label = await getClassLabel(key)
-      logger.info("class label", {class_label})
-    } catch (error)
+   
+    for(var retry=2;retry>0;--retry)
     {
-      logger.error("error", {error})
+      try {
+        const class_label = await getClassLabel(key)
+        logger.info("class label", {class_label})
+        if (class_label==='')
+        {
+          throw new Error('empty class label')
+        }
+        await setImageClassLabel(key, class_label);
+        break;
+      } catch (error)
+      {
+        logger.error("error", {error})
+        if (retry==1) // last
+        {
+          await setImageClassLabel(key, 'error');
+        }
+      }
     }
 
     const connections = await docClient.scan({

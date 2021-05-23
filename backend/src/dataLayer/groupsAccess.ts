@@ -24,7 +24,7 @@ export class GroupAccess {
   }
 
   async getAllGroups(): Promise<Group[]> {
-    console.log('Getting all groups')
+    logger.info('Getting all groups')
 
     const result = await this.docClient.scan({
       TableName: this.groupsTable
@@ -119,11 +119,28 @@ export class GroupAccess {
     return result.Items
   }
 
+  async setImageClassLabel(imageId : string, classLabel : string) {
+    logger.info('setImageClassLabel', {imageId, classLabel})
+    const image_record = await this.getImage(imageId)
+    const result = await this.docClient.update({
+      TableName: this.imagesTable,
+      Key: {
+          groupId : image_record.groupId,
+          timestamp : image_record.timestamp
+      },
+      UpdateExpression: "set classLabel = :classLabel",
+      ExpressionAttributeValues: {
+          ":classLabel": classLabel
+      }
+    }).promise()
+    logger.info("update result", result);
+  }
+
 }
 
 function createDynamoDBClient() {
   if (process.env.IS_OFFLINE) {
-    console.log('Creating a local DynamoDB instance')
+    logger.info('Creating a local DynamoDB instance')
     return new XAWS.DynamoDB.DocumentClient({
       region: 'localhost',
       endpoint: 'http://localhost:8000'

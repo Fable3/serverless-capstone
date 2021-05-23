@@ -95,7 +95,7 @@ hornbill
 hummingbird
 jacamar
 toucan
-drake
+duck
 red-breasted merganser, Mergus serrator
 goose
 black swan, Cygnus atratus
@@ -132,7 +132,7 @@ flamingo
 little blue heron, Egretta caerulea
 American egret, great white heron, Egretta albus
 bittern
-crane
+crane (bird)
 limpkin, Aramus pictus
 European gallinule, Porphyrio porphyrio
 American coot, marsh hen, mud hen, water hen, Fulica americana
@@ -515,7 +515,7 @@ cornet, horn, trumpet, trump
 cowboy boot
 cowboy hat, ten-gallon hat
 cradle
-crane
+crane (machine)
 crash helmet
 crate
 crib, cot

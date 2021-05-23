@@ -11,11 +11,14 @@ const s3 = new XAWS.S3()
 const imagesBucketName = process.env.IMAGES_S3_BUCKET
 const thumbnailBucketName = process.env.THUMBNAILS_S3_BUCKET
 
+import { createLogger } from '../../utils/logger'
+const logger = createLogger('resizeImage')
+
 export const handler: SNSHandler = async (event: SNSEvent) => {
-  console.log('Processing SNS event ', JSON.stringify(event))
+  logger.info('Processing SNS event ', {event})
   for (const snsRecord of event.Records) {
     const s3EventStr = snsRecord.Sns.Message
-    console.log('Processing S3 event', s3EventStr)
+    logger.info('Processing S3 event', {s3EventStr})
     const s3Event = JSON.parse(s3EventStr)
 
     for (const record of s3Event.Records) {
@@ -26,7 +29,7 @@ export const handler: SNSHandler = async (event: SNSEvent) => {
 
 async function processImage(record: S3EventRecord) {
   const key = record.s3.object.key
-  console.log('Processing S3 item with key: ', key)
+  logger.info('Processing S3 item with key: ', {key})
   const response = await s3
     .getObject({
       Bucket: imagesBucketName,
@@ -37,11 +40,11 @@ async function processImage(record: S3EventRecord) {
   const body = response.Body
   const image = await Jimp.read(body)
 
-  console.log('Resizing image')
+  logger.info('Resizing image')
   image.resize(150, Jimp.AUTO)
   const convertedBuffer = await image.getBufferAsync(Jimp.AUTO)
 
-  console.log(`Writing image back to S3 bucket: ${thumbnailBucketName}`)
+  logger.info(`Writing image back to S3 bucket: ${thumbnailBucketName}`)
   await s3
     .putObject({
       Bucket: thumbnailBucketName,

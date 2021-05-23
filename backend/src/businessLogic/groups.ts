@@ -62,3 +62,7 @@ export async function getImage(imageId : string) {
 export async function getImagesInGroup(groupId : string){
   return groupAccess.getImagesInGroup(groupId)
 }
+
+export async function setImageClassLabel(imageId : string, classLabel : string){
+  return groupAccess.setImageClassLabel(imageId, classLabel)
+}

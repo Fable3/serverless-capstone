@@ -4,4 +4,5 @@ export interface ImageModel {
   title: string
   imageId: string
   imageUrl: string
+  classLabel: string
 }

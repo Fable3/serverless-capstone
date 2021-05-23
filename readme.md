@@ -317,3 +317,39 @@ The starter code is the serverless version of Udagram. The frontend is already w
 - moved getUserId to a common util function to avoid code duplication
 
 - using middy middleware to add CORS headers
+
+- getImages status code changed to 200
+
+## Invoking the classifier
+
+The classifier function is based on RequestResponse, with minimal functionality in the C++ side. The business logic and database access is in typescript. To call the classification, it has to be after the upload of the image is complete, but before a notification is sent out.
+
+From testing the classifier earlier, there was a still running function, just had to update the environment variable to the new S3 image bucket to get the first successful automatic classification after image upload:
+
+```json
+{
+    "name": "sendNotifications",
+    "response": {
+        "StatusCode": 200,
+        "ExecutedVersion": "$LATEST",
+        "Payload": "{ \"label\": \"golden retriever\" }"
+    },
+    "level": "info",
+    "message": "returned"
+}
+```
+
+Next, I wrote the result to DynamoDB. Since imageId is only an index, I first retrieved the full record, then updated using the groupId + timestamp composite key. (https://stackoverflow.com/questions/32886247/how-can-we-update-dynamodb-table-based-on-indexnot-based-on-primary-has-and-ran)
+
+I made a small change in the client to include classLabel in the image model and display it next to the timestamp.
+
+Here's the result (dalmatian, coach dog, carriage dog share a common label in the GoogLeNet model):
+
+![labeled dalmatian](labeled_dalmatian.jpg)
+
+When I tested it a bit, some of the calls ran randomly into an error: `Error: Runtime exited with error: signal: broken pipe`
+
+I've increased the memory of the lambda function to 1GB, which also means faster processing time (it's linked in AWS), so the inference time dropped to 150 ms, total time around 200 ms.
+
+The automatic retry strategy is only valid for asynchronous calls, I simply do it from code.
+

@@ -18,7 +18,7 @@ export class UdagramImage extends React.PureComponent<
       <Card fluid color="red">
         <Card.Content>
           <Card.Header>{this.props.image.title}</Card.Header>
-          <Card.Description>{this.props.image.timestamp}</Card.Description>
+          <Card.Description>{this.props.image.timestamp} {this.props.image.classLabel}</Card.Description>
           {this.props.image.imageUrl && (
             <Image src={this.props.image.imageUrl} />
           )}
