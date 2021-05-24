@@ -4,7 +4,9 @@ My project demonstrates the capabilities of high-performance lambda functions. W
 
 I'm re-using the Udagram project, which is a lightweight image sharing application, and will add a function to classify the uploaded images with a deep neural network using OpenCV.
 
-The client side can be run locally to test the backend, and wscat to test websockets.
+The frontend is deployed to S3: http://udagram-fable.s3-website-us-east-1.amazonaws.com/
+
+Notifications through Websockets can be tested with wscat.
 
 The development environment setup for building C++ lambda functions, I've created a Docker image with the necessary libraries installed, and uploaded it to DockerHub for anyone to use.
 
